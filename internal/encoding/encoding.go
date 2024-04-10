@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sync"
 
 	"github.com/shamaton/msgpack/v2/def"
 	"github.com/shamaton/msgpack/v2/internal/common"
@@ -17,9 +18,12 @@ type encoder struct {
 	mv map[uintptr][]reflect.Value
 }
 
+var encoderPool = sync.Pool{New: func() any { return &encoder{} }}
+
 // Encode returns the MessagePack-encoded byte array of v.
 func Encode(v interface{}, asArray bool) (b []byte, err error) {
-	e := encoder{asArray: asArray}
+	e := encoderPool.Get().(*encoder)
+	e.asArray = asArray
 	/*
 		defer func() {
 			e := recover()
@@ -47,7 +51,10 @@ func Encode(v interface{}, asArray bool) (b []byte, err error) {
 	if size != last {
 		return nil, fmt.Errorf("failed serialization size=%d, lastIdx=%d", size, last)
 	}
-	return e.d, err
+	ret := e.d
+	e.reset()
+	encoderPool.Put(e)
+	return ret, err
 }
 
 //func stackTrace() string {
@@ -396,4 +403,11 @@ func (e *encoder) create(rv reflect.Value, offset int) int {
 
 	}
 	return offset
+}
+
+func (e *encoder) reset() {
+	e.d = nil
+	e.asArray = false
+	e.mk = nil
+	e.mk = nil
 }
