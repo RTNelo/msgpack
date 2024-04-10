@@ -18,11 +18,7 @@ type encoder struct {
 	mv map[uintptr][]reflect.Value
 }
 
-var encoderPool = sync.Pool{New: func() any {
-	return &encoder{
-		d: []byte{},
-	}
-}}
+var encoderPool = sync.Pool{New: func() any { return &encoder{} }}
 
 // Encode returns the MessagePack-encoded byte array of v.
 func Encode(v interface{}, asArray bool) (b []byte, err error) {
@@ -50,7 +46,7 @@ func Encode(v interface{}, asArray bool) (b []byte, err error) {
 		return nil, err
 	}
 
-	e.d = append(e.d, make([]byte, size)...)
+	e.d = make([]byte, size)
 	last := e.create(rv, 0)
 	if size != last {
 		return nil, fmt.Errorf("failed serialization size=%d, lastIdx=%d", size, last)
@@ -410,7 +406,7 @@ func (e *encoder) create(rv reflect.Value, offset int) int {
 }
 
 func (e *encoder) reset() {
-	e.d = e.d[:0]
+	e.d = nil
 	e.asArray = false
 	e.mk = nil
 	e.mk = nil
