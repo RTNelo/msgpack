@@ -3,7 +3,7 @@ package encoding
 import (
 	"math"
 	"reflect"
-	"sync"
+	"unsafe"
 
 	"github.com/shamaton/msgpack/v2/def"
 	"github.com/shamaton/msgpack/v2/internal/common"
@@ -15,7 +15,27 @@ type structCache struct {
 	common.Common
 }
 
-var cachemap = sync.Map{}
+var cachemap = newCacheMap()
+
+type cacheMap struct {
+	m *common.Map[unsafe.Pointer, *structCache]
+}
+
+func (m *cacheMap) Load(t reflect.Type) (*structCache, bool) {
+	return m.m.Load(common.Type2rtypeptr(t))
+}
+
+func (m *cacheMap) Store(t reflect.Type, enc *structCache) {
+	m.m.Store(common.Type2rtypeptr(t), enc)
+}
+
+func (m *cacheMap) Delete(t reflect.Type) {
+	m.m.Delete(common.Type2rtypeptr(t))
+}
+
+func newCacheMap() *cacheMap {
+	return &cacheMap{m: common.NewMap[unsafe.Pointer, *structCache]()}
+}
 
 type structWriteFunc func(rv reflect.Value) error
 
@@ -122,7 +142,7 @@ func (e *encoder) getStructCache(rv reflect.Value) *structCache {
 	t := rv.Type()
 	cache, find := cachemap.Load(t)
 	if find {
-		return cache.(*structCache)
+		return cache
 	}
 
 	var c *structCache

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"sync"
+	"unsafe"
 
 	"github.com/shamaton/msgpack/v2/def"
 	"github.com/shamaton/msgpack/v2/internal/common"
@@ -16,7 +16,27 @@ type structCache struct {
 	common.Common
 }
 
-var cachemap = sync.Map{}
+var cachemap = newCacheMap()
+
+type cacheMap struct {
+	m *common.Map[unsafe.Pointer, *structCache]
+}
+
+func (m *cacheMap) Load(t reflect.Type) (*structCache, bool) {
+	return m.m.Load(common.Type2rtypeptr(t))
+}
+
+func (m *cacheMap) Store(t reflect.Type, enc *structCache) {
+	m.m.Store(common.Type2rtypeptr(t), enc)
+}
+
+func (m *cacheMap) Delete(t reflect.Type) {
+	m.m.Delete(common.Type2rtypeptr(t))
+}
+
+func newCacheMap() *cacheMap {
+	return &cacheMap{m: common.NewMap[unsafe.Pointer, *structCache]()}
+}
 
 type structCalcFunc func(rv reflect.Value) (int, error)
 type structWriteFunc func(rv reflect.Value, offset int) int
@@ -75,7 +95,7 @@ func (e *encoder) calcStructArray(rv reflect.Value) (int, error) {
 		}
 		cachemap.Store(t, c)
 	} else {
-		c = cache.(*structCache)
+		c = cache
 		for i := 0; i < len(c.indexes); i++ {
 			size, err := e.calcSize(rv.Field(c.indexes[i]))
 			if err != nil {
@@ -121,7 +141,7 @@ func (e *encoder) calcStructMap(rv reflect.Value) (int, error) {
 		}
 		cachemap.Store(t, c)
 	} else {
-		c = cache.(*structCache)
+		c = cache
 		for i := 0; i < len(c.indexes); i++ {
 			keySize := def.Byte1 + e.calcString(c.names[i])
 			valueSize, err := e.calcSize(rv.Field(c.indexes[i]))
@@ -185,7 +205,7 @@ func (e *encoder) writeStruct(rv reflect.Value, offset int) int {
 func (e *encoder) writeStructArray(rv reflect.Value, offset int) int {
 
 	cache, _ := cachemap.Load(rv.Type())
-	c := cache.(*structCache)
+	c := cache
 
 	// write format
 	num := len(c.indexes)
@@ -208,7 +228,7 @@ func (e *encoder) writeStructArray(rv reflect.Value, offset int) int {
 func (e *encoder) writeStructMap(rv reflect.Value, offset int) int {
 
 	cache, _ := cachemap.Load(rv.Type())
-	c := cache.(*structCache)
+	c := cache
 
 	// format size
 	num := len(c.indexes)
