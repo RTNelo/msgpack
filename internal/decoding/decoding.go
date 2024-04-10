@@ -3,6 +3,7 @@ package decoding
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/shamaton/msgpack/v2/internal/common"
 )
@@ -13,10 +14,16 @@ type decoder struct {
 	common.Common
 }
 
+var decoderPool = sync.Pool{New: func() any {
+	return &decoder{}
+}}
+
 // Decode analyzes the MessagePack-encoded data and stores
 // the result into the pointer of v.
 func Decode(data []byte, v interface{}, asArray bool) error {
-	d := decoder{data: data, asArray: asArray}
+	d := decoderPool.Get().(*decoder)
+	d.asArray = asArray
+	d.data = data
 
 	if d.data == nil || len(d.data) < 1 {
 		return fmt.Errorf("data is empty")
@@ -29,6 +36,10 @@ func Decode(data []byte, v interface{}, asArray bool) error {
 	rv = rv.Elem()
 
 	last, err := d.decode(rv, 0)
+
+	d.reset()
+	decoderPool.Put(d)
+
 	if err != nil {
 		return err
 	}
@@ -339,4 +350,8 @@ func (d *decoder) decode(rv reflect.Value, offset int) (int, error) {
 
 func (d *decoder) errorTemplate(code byte, k reflect.Kind) error {
 	return fmt.Errorf("msgpack : invalid code %x decoding %v", code, k)
+}
+
+func (d *decoder) reset() {
+	d.data = nil
 }
