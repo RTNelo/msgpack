@@ -3,9 +3,10 @@ package decoding
 import (
 	"encoding/binary"
 	"reflect"
-	"sync"
+	"unsafe"
 
 	"github.com/shamaton/msgpack/v2/def"
+	"github.com/shamaton/msgpack/v2/internal/common"
 )
 
 type structCacheTypeMap struct {
@@ -17,9 +18,29 @@ type structCacheTypeArray struct {
 	m []int
 }
 
+type mapSCT[V any] struct {
+	m *common.Map[unsafe.Pointer, V]
+}
+
+func (m *mapSCT[V]) Load(t reflect.Type) (V, bool) {
+	return m.m.Load(common.Type2rtypeptr(t))
+}
+
+func (m *mapSCT[V]) Store(t reflect.Type, enc V) {
+	m.m.Store(common.Type2rtypeptr(t), enc)
+}
+
+func (m *mapSCT[V]) Delete(t reflect.Type) {
+	m.m.Delete(common.Type2rtypeptr(t))
+}
+
+func newMapSCT[V any]() *mapSCT[V] {
+	return &mapSCT[V]{m: common.NewMap[unsafe.Pointer, V]()}
+}
+
 // struct cache map
-var mapSCTM = sync.Map{}
-var mapSCTA = sync.Map{}
+var mapSCTM = newMapSCT[*structCacheTypeMap]()
+var mapSCTA = newMapSCT[*structCacheTypeArray]()
 
 func (d *decoder) setStruct(rv reflect.Value, offset int, k reflect.Kind) (int, error) {
 	/*
@@ -77,7 +98,7 @@ func (d *decoder) setStructFromArray(rv reflect.Value, offset int, k reflect.Kin
 		}
 		mapSCTA.Store(rv.Type(), scta)
 	} else {
-		scta = cache.(*structCacheTypeArray)
+		scta = cache
 	}
 	// set value
 	for i := 0; i < l; i++ {
@@ -119,7 +140,7 @@ func (d *decoder) setStructFromMap(rv reflect.Value, offset int, k reflect.Kind)
 		}
 		mapSCTM.Store(rv.Type(), sctm)
 	} else {
-		sctm = cache.(*structCacheTypeMap)
+		sctm = cache
 	}
 
 	for i := 0; i < l; i++ {
